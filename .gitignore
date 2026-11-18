@@ -1,0 +1,6 @@
+# Compiled test programs (sh testapp/build_variants.sh)
+testapp/build/
+
+# Python bytecode
+__pycache__/
+*.pyc
