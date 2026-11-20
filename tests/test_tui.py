@@ -104,7 +104,7 @@ class Tui(object):
         raise AssertionError('timed out after %.0fs waiting for %r. Screen was:\n%s' % (timeout, pattern, scr))
 
     def status(self):
-        return self.screen().splitlines()[0]
+        return self.screen().splitlines()[-1]
 
     def close(self, keep=False):
         if not keep:
@@ -376,22 +376,29 @@ class TuiTests(unittest.TestCase):
     def test_mouse_clicks_shortcuts_and_tabs(self):
         t = self.start('--no-session', '--mouse', 'build/demo_debug')
         t.wait_for(r'Opened \d+ source files')
-        t.wait_for(r'\^NOver.*Opened')                        # the message sits beside the shortcuts
-        t.click_text('^NOver', row=-1)                        # starts and stops at main
+        t.wait_for(r'\A \^RRun  \^NOver')                      # shortcuts on the top line
+        t.wait_for(r'^ gdbtui .*Opened \d+ source files')       # messages on the status line
+        t.click_text('^NOver', row=0)                          # starts and stops at main
         t.wait_for(r'Paused:')
         first = int(t.wait_for(r'^ =>\s+(\d+) ').group(1))
-        t.click_text('^NOver', row=-1)
+        t.click_text('^NOver', row=0)
         t.wait_for(r'^ =>\s+(?!%d )\d+ ' % first)
         second = int(t.wait_for(r'^ =>\s+(\d+) ').group(1))
         self.assertGreater(second, first)
         self.assertEqual(second, source_line('main.cpp', 'Options opt = parse_options'))
-        t.click_text('^NOver', row=-1, double=True)           # double click: two steps
+        t.click_text('^NOver', row=0, double=True)           # double click: two steps
         t.wait_for(r'^ =>\s+%d ' % source_line('main.cpp', 'signal(SIGTERM, on_signal)'))
         t.click_text(' Threads ')                              # a tab label in the bottom panel
         t.wait_for(r'^\* 1 .*stopped.*main\(\) at src/main\.cpp')
-        t.click_text('^RCont', row=-1)
+        # A message goes on the status line; the shortcuts on the top line stay untouched.
+        t.menu('toggle hexadecimal')
+        t.wait_for(r'^ gdbtui .*Paused.*Hexadecimal display on')
+        self.assertTrue(t.screen().startswith(' ^RCont  ^NOver  ^TInto'), t.screen())
+        t.click_text('Hexadecimal display on', row=-1)       # clicking the status line clears it
+        t.wait_for(r'^ gdbtui .*Paused(?!.*Hexadecimal).*Thread 1 ')
+        t.click_text('^RCont', row=0)
         t.wait_for(r'\^CBreak')
-        t.click_text('^CBreak', row=-1)
+        t.click_text('^CBreak', row=0)
         t.wait_for(r'Paused: Paused \(Break All\)')
 
     def test_help_and_menu_open(self):

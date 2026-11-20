@@ -81,7 +81,7 @@ These run the real `gdbtui.py`, the real gdb and the test program, the same way 
 | `test_assembly_breakpoint_before_run_hits_after_relocation` | A breakpoint on an instruction, set before the program runs, still hits after the program is loaded at a random address |
 | `test_disasm_breakpoint_survives_restart_with_aslr` | With address randomization forced on, a disassembly breakpoint still hits after a restart |
 | `test_stale_address_breakpoint_recovery` | A breakpoint on a raw address from an earlier run gives the "Breakpoint Problem" dialog, and Delete-and-continue works |
-| `test_mouse_clicks_shortcuts_and_tabs` | With `--mouse`, clicking `^N Over` on the bottom line steps, a double click steps twice, clicking the Threads tab label switches to it, and clicking Cont then Break runs and pauses the program. The clicks are xterm X10 mouse sequences sent with `tmux send-keys -H` |
+| `test_mouse_clicks_shortcuts_and_tabs` | With `--mouse`, the shortcuts are on the top line and messages on the status line at the bottom. Clicking `^N Over` steps, a double click steps twice, clicking the Threads tab label switches to it, a message leaves the shortcuts untouched and clicking it clears it, and clicking Cont then Break runs and pauses the program. The clicks are xterm X10 mouse sequences sent with `tmux send-keys -H` |
 | `test_help_and_menu_open` | Help (Ctrl+_) and the menu (Ctrl+X) open |
 | `test_quit_cleans_up_processes` | Ctrl+Q asks first, and the debugged program does not survive |
 
