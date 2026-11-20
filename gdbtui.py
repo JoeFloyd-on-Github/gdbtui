@@ -48,6 +48,8 @@ except ImportError:  # pragma: no cover
 
 VERSION = '1.0.0'
 CONFIG_PATH = os.path.expanduser('~/.gdbtui.json')
+# Shortcut-bar commands that a double click runs twice (curses merges two fast clicks).
+REPEATABLE_CLICK_ACTIONS = ('continue', 'step_over', 'step_into', 'step_out')
 MAX_BUFFER_LINES = 5000
 
 # --------------------------------------------------------------------------
@@ -3129,6 +3131,9 @@ class App(SyscallMixin):
         self.popups = []
         self.pending_popups = []
         self.message = ('', None, 0)
+        self.message_dismissed = False
+        self.hint_hits = []
+        self.click_repeat = None    # (action, stop_gen, time): second click of a double click on Step/Continue
         self.ascii_only = 'utf' not in (locale.getpreferredencoding(False) or '').lower()
         self.tabsize = int(config.get('tabsize', opts.tabsize or 4))
         self.syntax = bool(config.get('syntax', True))
@@ -3403,6 +3408,7 @@ class App(SyscallMixin):
     # ------------------------------------------------------------------ messages
     def msg(self, text, kind='ok'):
         self.message = (text, kind, time.time())
+        self.message_dismissed = False
         self.dirty = True
 
     def error(self, text):
@@ -3561,6 +3567,7 @@ class App(SyscallMixin):
         self.scr.erase()
         self.cursor_req = None
         self.tab_hits = []
+        self.hint_hits = []
         if self.H < 10 or self.W < 40:
             self.put(0, 0, 'Terminal too small (%dx%d). Need 40x10.' % (self.W, self.H))
             self.scr.noutrefresh()
@@ -3631,13 +3638,11 @@ class App(SyscallMixin):
             self.put(0, len(left) + 2, right, attr)
 
     def draw_hints(self):
+        """Bottom line: clickable shortcuts, then the latest message if it fits beside them.
+        A message too long to fit takes the whole line (clicking it clears it)."""
         y = self.H - 1
         text, kind, ts = self.message
         self.put(y, 0, ' ' * (self.W - 1), self.A['hint'])
-        if text and time.time() - ts < 8:
-            a = {'err': self.A['err'], 'warn': self.A['warn'], 'ok': self.A['ok']}.get(kind, 0)
-            self.put(y, 0, ' ' + text, a | curses.A_REVERSE if not curses.has_colors() else a, self.W - 1)
-            return
         acts = ['continue', 'step_over', 'step_into', 'step_out', 'toggle_bp', 'run_to_cursor',
                 'quickwatch', 'add_watch', 'toggle_disasm', 'menu', 'help']
         labels = {'continue': 'Run' if self.state in ('idle', 'exited') else 'Cont', 'step_over': 'Over',
@@ -3647,6 +3652,7 @@ class App(SyscallMixin):
         if self.state == 'running':
             acts = ['break_all', 'stop', 'toggle_bp', 'menu', 'help']
             labels.update({'break_all': 'Break', 'stop': 'Stop'})
+        items = []
         x = 1
         for a in acts:
             code = self.action_keys.get(a)
@@ -3655,9 +3661,21 @@ class App(SyscallMixin):
             k = short_key(code)
             if x + len(k) + len(labels[a]) + 2 >= self.W:
                 break
-            self.put(y, x, k, self.A['hintkey'])
-            self.put(y, x + len(k), labels[a] + ' ', self.A['hint'])
+            items.append((x, k, a))
             x += len(k) + len(labels[a]) + 2
+        showing = bool(text) and time.time() - ts < 8 and not self.message_dismissed
+        mattr = {'err': self.A['err'], 'warn': self.A['warn'], 'ok': self.A['ok']}.get(kind, 0)
+        if not curses.has_colors():
+            mattr |= curses.A_REVERSE
+        if showing and x + 2 + len(text) > self.W - 1:
+            self.put(y, 0, ' ' + text, mattr, self.W - 1)
+            return
+        for (ix, k, a) in items:
+            self.put(y, ix, k, self.A['hintkey'])
+            self.put(y, ix + len(k), labels[a] + ' ', self.A['hint'])
+            self.hint_hits.append((y, ix, ix + len(k) + len(labels[a]), a))
+        if showing:
+            self.put(y, x + 1, ' ' + text + ' ', mattr, self.W - 2 - x)
 
     def draw_pane(self, pane, rect):
         y, x, h, w = rect
@@ -3805,6 +3823,7 @@ class App(SyscallMixin):
                 self.dirty = True
                 if self.quitting:
                     break
+            self.run_click_repeat()
             while self.pending_popups and not self.quitting:
                 fn = self.pending_popups.pop(0)
                 try:
@@ -3813,6 +3832,19 @@ class App(SyscallMixin):
                     self.console_write(traceback.format_exc(), 'err')
             if self.dirty and not self.quitting:
                 self.draw()
+
+    def run_click_repeat(self):
+        rep = self.click_repeat
+        if not rep:
+            return
+        act, gen, t0 = rep
+        if time.time() - t0 > 5:
+            self.click_repeat = None
+        elif self.stop_gen > gen and self.state != 'running':
+            self.click_repeat = None
+            if self.state == 'stopped' and not self.popups:
+                getattr(self, 'act_' + act)()
+                self.dirty = True
 
     def modal(self, popup):
         self.popups.append(popup)
@@ -3869,6 +3901,7 @@ class App(SyscallMixin):
         if k == curses.KEY_MOUSE:
             self.on_mouse()
             return
+        self.click_repeat = None
         if isinstance(k, int) and k in self.keymap:
             act = self.keymap[k]
             fn = getattr(self, 'act_' + act, None)
@@ -3949,6 +3982,25 @@ class App(SyscallMixin):
         click = bs & (curses.BUTTON1_CLICKED | curses.BUTTON1_PRESSED | curses.BUTTON1_RELEASED)
         double = bs & (curses.BUTTON1_DOUBLE_CLICKED)
         if (click or double) and not (bs & curses.BUTTON1_RELEASED and not bs & curses.BUTTON1_CLICKED):
+            if my == self.H - 1:
+                # Bottom line: a click on a shortcut runs it, exactly as if its key was pressed.
+                # A click on a message clears it, so the shortcuts show again.
+                for (ty, x0, x1, act) in self.hint_hits:
+                    if x0 <= mx < x1:
+                        fn = getattr(self, 'act_' + act, None)
+                        if fn:
+                            gen = self.stop_gen
+                            fn()
+                            # curses reports two fast clicks as one double click. For the
+                            # execution commands that means "do it twice": the second one
+                            # runs when the program stops after the first.
+                            if double and act in REPEATABLE_CLICK_ACTIONS:
+                                self.click_repeat = (act, gen, time.time())
+                        self.dirty = True
+                        return
+                self.message_dismissed = True
+                self.dirty = True
+                return
             for (ty, x0, x1, pane, i) in self.tab_hits:
                 if my == ty and x0 <= mx < x1:
                     if pane == 'srcfile':
@@ -6255,6 +6307,9 @@ class App(SyscallMixin):
                   '  Source panel: open files are tabs in its title bar; Ctrl+] cycles them',
                   '  (focus the Source panel first). Ctrl+X -> "Files: ..." switches / closes.',
                   '  Send a signal: Ctrl+X -> "Send Signal to Program / Process".',
+                  '  Mouse (--mouse, or Ctrl+X -> "Toggle Mouse Support"): click a tab to switch',
+                  '  to it; click a shortcut on the bottom line to run it (double-click Step or',
+                  '  Continue to do it twice); click a message there to clear it.',
                   '  Locals/Watch:  Enter/Right expand   Left collapse   e edit value',
                   '                 w add to Watch   x show in Memory',
                   '                 Watch only: a/Insert add   d/Delete remove   r edit expression',

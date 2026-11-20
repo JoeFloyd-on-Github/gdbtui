@@ -100,6 +100,14 @@ This confirmed the direction: everything stays inside one terminal.
 - `CLAUDE.md` and this file were added afterwards.
 - **Working setup:** development happens in Claude Code **cloud** sessions working on the GitHub repository. A Windows machine with Remote Control was tried, but its folder couldn't be served to cloud sessions, so the repository on GitHub is the shared source of truth.
 
+### 10. Clickable shortcuts and tabs
+
+- **Request:** click the debugging shortcuts to run them, and click panel tab labels to switch tabs.
+- Tab clicks already worked with `--mouse`, which is off by default. The new part is the shortcut bar on the bottom line: each `^N Over`-style item records its screen range (`hint_hits`), and a click calls the same `act_*` method as the key.
+- **Messages hid the shortcuts.** Every step or stop shows a message on the bottom line for 8 seconds, which covered the bar, so a second click did nothing. Messages are now drawn to the right of the shortcuts when they fit. A message that is too long still covers the line, and clicking it clears it.
+- **Double clicks.** curses merges two fast clicks into one `BUTTON1_DOUBLE_CLICKED` event, which would lose the second step. Panels need double clicks, so the click timing (`mouseinterval`) stays. For Continue and the three Steps, a double click runs the action again once `stop_gen` shows the program stopped (`click_repeat`). A key press cancels it, and so does waiting 5 seconds.
+- **Testing mouse input:** tmux passes raw bytes with `send-keys -H`. The tests send xterm X10 sequences (`ESC [ M` with button and 1-based coordinates + 32) for press and release.
+
 ## gdb quirks and technical lessons
 
 **Signals**

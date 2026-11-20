@@ -247,7 +247,12 @@ Action names are the first column of the `ACTIONS` list at the top of `gdbtui.py
   - If the program is already paused, you can choose to deliver the signal and continue, or queue it for when you continue.
   - SIGKILL and SIGSTOP are always sent directly.
 - C/C++ syntax highlighting.
-- Optional mouse support: click a tab, click the gutter to toggle a breakpoint, double-click a word to QuickWatch it, scroll with the wheel.
+- Optional mouse support (`--mouse`, or Ctrl+X → "Toggle Mouse Support"):
+  - Click a tab label in any panel to switch to it, including the open-file tabs in the Source panel.
+  - Click a shortcut on the bottom line (`^N Over`, `^R Cont`, `^C Break` …) to run it, exactly as if you pressed the key. Double-clicking Step or Continue does it twice: the second one runs once the program has stopped.
+  - Messages appear to the right of the shortcuts, so the shortcuts stay clickable. A message too long to fit covers the line for 8 seconds; click it to bring the shortcuts back.
+  - Click the gutter to toggle a breakpoint, double-click a word to QuickWatch it, scroll with the wheel.
+  - Hold Shift to select text with the mouse in most terminals.
 - Panel zoom and resizable layout.
 - Breakpoints, watches and open source files are saved per program in `~/.gdbtui.json` and restored the next time you debug it.
 - Source path substitution, for binaries built in another directory.

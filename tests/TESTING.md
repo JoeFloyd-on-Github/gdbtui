@@ -53,7 +53,7 @@ These cover the parts that need neither gdb nor a terminal:
 - **ELF headers,** using the built test binaries: PIE versus non-PIE detection and the load base used to map strace addresses.
 - **The installer** contains the checksum of the current `gdbtui.py`.
 
-### 3. End-to-end tests: `test_tui.py` (19 tests)
+### 3. End-to-end tests: `test_tui.py` (20 tests)
 
 These run the real `gdbtui.py`, the real gdb and the test program, the same way a person uses it:
 
@@ -81,6 +81,7 @@ These run the real `gdbtui.py`, the real gdb and the test program, the same way 
 | `test_assembly_breakpoint_before_run_hits_after_relocation` | A breakpoint on an instruction, set before the program runs, still hits after the program is loaded at a random address |
 | `test_disasm_breakpoint_survives_restart_with_aslr` | With address randomization forced on, a disassembly breakpoint still hits after a restart |
 | `test_stale_address_breakpoint_recovery` | A breakpoint on a raw address from an earlier run gives the "Breakpoint Problem" dialog, and Delete-and-continue works |
+| `test_mouse_clicks_shortcuts_and_tabs` | With `--mouse`, clicking `^N Over` on the bottom line steps, a double click steps twice, clicking the Threads tab label switches to it, and clicking Cont then Break runs and pauses the program. The clicks are xterm X10 mouse sequences sent with `tmux send-keys -H` |
 | `test_help_and_menu_open` | Help (Ctrl+_) and the menu (Ctrl+X) open |
 | `test_quit_cleans_up_processes` | Ctrl+Q asks first, and the debugged program does not survive |
 
@@ -115,5 +116,5 @@ Bugs found this way include:
   ```
 - **Other gdb versions.** Only gdb 15.1 (Ubuntu 24.04) was used. Fallbacks exist for older versions, for example where `-data-disassemble -a`, `queue-signal`, `-file-list-shared-libraries` or `starti` are missing, but they haven't been exercised.
 - **Other architectures.** Only x86-64 was tested. The system-call register tables for i386, AArch64 and ARM are untested.
-- **Real terminals.** tmux stands in for the terminal. Colours, mouse support and key handling in specific terminal emulators, and over `docker exec` and `kubectl exec`, were not tested automatically. Mouse support was only checked by injecting raw xterm mouse sequences.
+- **Real terminals.** tmux stands in for the terminal. Colours, mouse support and key handling in specific terminal emulators, and over `docker exec` and `kubectl exec`, were not tested automatically. Mouse support is only tested by injecting raw xterm X10 mouse sequences, not with a real mouse or the SGR (1006) encoding some terminals use.
 - **Attaching to a process and core dumps.** Both were checked by hand during development, but have no automated test.
