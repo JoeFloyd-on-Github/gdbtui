@@ -82,7 +82,8 @@ Tab and Shift+Tab move focus between the Source, right and bottom panels. Every 
   - a Syscalls tab with filter, summary, details, break on call, and save.
 - **Sessions:** breakpoints, watches, open files and the active file are saved per program in `~/.gdbtui.json` and restored automatically. Raw `*0x…` breakpoints are never saved.
 - **UI:**
-  - panels can be resized and zoomed; mouse support is optional (`--mouse`). With it on, clicking a tab label switches tab, clicking a shortcut on the bottom line runs it (a double click on Step/Continue runs it twice), and messages sit to the right of the shortcuts so they stay clickable;
+  - panels can be resized and zoomed; mouse support is optional (`--mouse`). With it on, clicking a tab label switches tab, clicking a shortcut on the top line runs it (a double click on Step/Continue runs it twice), and clicking the status line clears its message;
+  - **screen layout:** the top line holds only the debugging shortcuts, so nothing ever covers them. The bottom line is the status bar: the program and its state, then the latest message (shown for 8 seconds), then flags such as `[MOUSE]` and the current thread and frame. A message hides the frame part when both don't fit;
   - a GDB Console tab (CLI commands; lines starting with `-` are raw MI);
   - a help popup; settings stored in `~/.gdbtui.json` (`tabsize`, `syntax`, `mouse`, `bottom_ratio`, `right_ratio`, `keys`, `disable_aslr`, `auto_open`, `max_open_files`, `strace_options`, `sessions`).
 

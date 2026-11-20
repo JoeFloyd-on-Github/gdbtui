@@ -108,6 +108,15 @@ This confirmed the direction: everything stays inside one terminal.
 - **Double clicks.** curses merges two fast clicks into one `BUTTON1_DOUBLE_CLICKED` event, which would lose the second step. Panels need double clicks, so the click timing (`mouseinterval`) stays. For Continue and the three Steps, a double click runs the action again once `stop_gen` shows the program stopped (`click_repeat`). A key press cancels it, and so does waiting 5 seconds.
 - **Testing mouse input:** tmux passes raw bytes with `send-keys -H`. The tests send xterm X10 sequences (`ESC [ M` with button and 1-based coordinates + 32) for press and release.
 
+### 11. Shortcuts at the top, status bar at the bottom
+
+- **Request:** put the shortcuts at the top of the screen and the status bar on its own line at the bottom, so status updates never cover the shortcuts.
+- The two bars swapped rows; the panels still use the rows in between, so the panel layout didn't change.
+  - **Top line (`draw_hints`):** only the shortcuts. Clicks on row 0 run them.
+  - **Bottom line (`draw_status`):** the program and its state, then the latest message, then flags and the current thread and frame. A message takes priority over the frame part when both don't fit. Clicking the line clears the message.
+- This replaces step 10's arrangement, where messages shared the shortcut line and sat to its right.
+- **Tests:** `Tui.status()` now reads the last screen line, and the shortcut clicks target row 0.
+
 ## gdb quirks and technical lessons
 
 **Signals**

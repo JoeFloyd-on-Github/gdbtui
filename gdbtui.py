@@ -3606,6 +3606,10 @@ class App(SyscallMixin):
         self.dirty = False
 
     def draw_status(self):
+        """Bottom line: program and state, then the latest message, then flags and the current frame.
+        A message pushes the frame information off the line when both don't fit; after 8 seconds
+        (or a click on the line) the message goes and the frame comes back."""
+        y = self.H - 1
         st = {'idle': 'Not started', 'running': 'Running', 'stopped': 'Paused', 'exited': 'Exited'}[self.state]
         if self.core and self.state == 'stopped':
             st = 'Core dump'
@@ -3630,19 +3634,28 @@ class App(SyscallMixin):
         if flags:
             right = '[%s] %s' % (' '.join(flags), right)
         attr = self.A['status']
-        self.put(0, 0, ' ' * self.W, attr)
-        self.put(0, 0, left, attr)
-        if len(left) + len(right) + 2 < self.W:
-            self.put(0, self.W - len(right), right, attr)
-        elif right:
-            self.put(0, len(left) + 2, right, attr)
+        W = self.W - 1          # writing the bottom-right cell can scroll some terminals
+        self.put(y, 0, ' ' * W, attr)
+        self.put(y, 0, left, attr, W)
+        x = len(left) + 2
+        text, kind, ts = self.message
+        if text and time.time() - ts < 8 and not self.message_dismissed and x < W - 4:
+            mattr = {'err': self.A['err'], 'warn': self.A['warn'], 'ok': self.A['ok']}.get(kind, 0)
+            if not curses.has_colors():
+                mattr |= curses.A_REVERSE
+            msg = ' ' + text + ' '
+            self.put(y, x, msg, mattr, W - x)
+            x += len(msg) + 2
+        if right and x + len(right) <= W:
+            self.put(y, W - len(right), right, attr)
+        elif right and x < W:
+            self.put(y, x, right, attr, W - x)     # narrow terminal: right after the state, cut off
 
     def draw_hints(self):
-        """Bottom line: clickable shortcuts, then the latest message if it fits beside them.
-        A message too long to fit takes the whole line (clicking it clears it)."""
-        y = self.H - 1
-        text, kind, ts = self.message
-        self.put(y, 0, ' ' * (self.W - 1), self.A['hint'])
+        """Top line: the debugging shortcuts. Nothing else is drawn here, so they are always
+        visible, and with mouse support on, clicking one runs it."""
+        y = 0
+        self.put(y, 0, ' ' * self.W, self.A['hint'])
         acts = ['continue', 'step_over', 'step_into', 'step_out', 'toggle_bp', 'run_to_cursor',
                 'quickwatch', 'add_watch', 'toggle_disasm', 'menu', 'help']
         labels = {'continue': 'Run' if self.state in ('idle', 'exited') else 'Cont', 'step_over': 'Over',
@@ -3652,7 +3665,6 @@ class App(SyscallMixin):
         if self.state == 'running':
             acts = ['break_all', 'stop', 'toggle_bp', 'menu', 'help']
             labels.update({'break_all': 'Break', 'stop': 'Stop'})
-        items = []
         x = 1
         for a in acts:
             code = self.action_keys.get(a)
@@ -3661,21 +3673,10 @@ class App(SyscallMixin):
             k = short_key(code)
             if x + len(k) + len(labels[a]) + 2 >= self.W:
                 break
-            items.append((x, k, a))
+            self.put(y, x, k, self.A['hintkey'])
+            self.put(y, x + len(k), labels[a] + ' ', self.A['hint'])
+            self.hint_hits.append((y, x, x + len(k) + len(labels[a]), a))
             x += len(k) + len(labels[a]) + 2
-        showing = bool(text) and time.time() - ts < 8 and not self.message_dismissed
-        mattr = {'err': self.A['err'], 'warn': self.A['warn'], 'ok': self.A['ok']}.get(kind, 0)
-        if not curses.has_colors():
-            mattr |= curses.A_REVERSE
-        if showing and x + 2 + len(text) > self.W - 1:
-            self.put(y, 0, ' ' + text, mattr, self.W - 1)
-            return
-        for (ix, k, a) in items:
-            self.put(y, ix, k, self.A['hintkey'])
-            self.put(y, ix + len(k), labels[a] + ' ', self.A['hint'])
-            self.hint_hits.append((y, ix, ix + len(k) + len(labels[a]), a))
-        if showing:
-            self.put(y, x + 1, ' ' + text + ' ', mattr, self.W - 2 - x)
 
     def draw_pane(self, pane, rect):
         y, x, h, w = rect
@@ -3982,9 +3983,8 @@ class App(SyscallMixin):
         click = bs & (curses.BUTTON1_CLICKED | curses.BUTTON1_PRESSED | curses.BUTTON1_RELEASED)
         double = bs & (curses.BUTTON1_DOUBLE_CLICKED)
         if (click or double) and not (bs & curses.BUTTON1_RELEASED and not bs & curses.BUTTON1_CLICKED):
-            if my == self.H - 1:
-                # Bottom line: a click on a shortcut runs it, exactly as if its key was pressed.
-                # A click on a message clears it, so the shortcuts show again.
+            if my == 0:
+                # Top line: a click on a shortcut runs it, exactly as if its key was pressed.
                 for (ty, x0, x1, act) in self.hint_hits:
                     if x0 <= mx < x1:
                         fn = getattr(self, 'act_' + act, None)
@@ -3998,6 +3998,9 @@ class App(SyscallMixin):
                                 self.click_repeat = (act, gen, time.time())
                         self.dirty = True
                         return
+                return
+            if my == self.H - 1:
+                # Status line: a click clears the message, bringing back the frame information.
                 self.message_dismissed = True
                 self.dirty = True
                 return
@@ -6308,8 +6311,8 @@ class App(SyscallMixin):
                   '  (focus the Source panel first). Ctrl+X -> "Files: ..." switches / closes.',
                   '  Send a signal: Ctrl+X -> "Send Signal to Program / Process".',
                   '  Mouse (--mouse, or Ctrl+X -> "Toggle Mouse Support"): click a tab to switch',
-                  '  to it; click a shortcut on the bottom line to run it (double-click Step or',
-                  '  Continue to do it twice); click a message there to clear it.',
+                  '  to it; click a shortcut on the top line to run it (double-click Step or',
+                  '  Continue to do it twice); click a message on the status line to clear it.',
                   '  Locals/Watch:  Enter/Right expand   Left collapse   e edit value',
                   '                 w add to Watch   x show in Memory',
                   '                 Watch only: a/Insert add   d/Delete remove   r edit expression',
