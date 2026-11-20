@@ -68,6 +68,24 @@ class Tui(object):
         self.type(entry)
         self.keys('Enter')
 
+    def click(self, x, y, double=False):
+        """Left click at 0-based column x, row y, sent as xterm X10 mouse sequences."""
+        seq = []
+        for _ in range(2 if double else 1):
+            for button in (0x20, 0x23):                       # press, release
+                seq += ['1b', '5b', '4d', '%x' % button, '%x' % (x + 33), '%x' % (y + 33)]
+        subprocess.check_call(['tmux', 'send-keys', '-t', self.name, '-H'] + seq)
+        time.sleep(0.4)
+
+    def click_text(self, text, row=None, double=False):
+        """Click the middle of the first occurrence of text (on screen row `row`, if given)."""
+        rows = self.screen().splitlines()
+        for y, line in enumerate(rows):
+            if (row is None or y == row % len(rows)) and text in line:
+                self.click(line.index(text) + len(text) // 2, y, double)
+                return
+        raise AssertionError('%r not on screen:\n%s' % (text, '\n'.join(rows)))
+
     # ---- output
     def screen(self):
         return subprocess.check_output(['tmux', 'capture-pane', '-p', '-t', self.name]).decode('utf-8', 'replace')
@@ -355,6 +373,27 @@ class TuiTests(unittest.TestCase):
         t.wait_for(r'\| Running')
 
     # ------------------------------------------------------------ misc
+    def test_mouse_clicks_shortcuts_and_tabs(self):
+        t = self.start('--no-session', '--mouse', 'build/demo_debug')
+        t.wait_for(r'Opened \d+ source files')
+        t.wait_for(r'\^NOver.*Opened')                        # the message sits beside the shortcuts
+        t.click_text('^NOver', row=-1)                        # starts and stops at main
+        t.wait_for(r'Paused:')
+        first = int(t.wait_for(r'^ =>\s+(\d+) ').group(1))
+        t.click_text('^NOver', row=-1)
+        t.wait_for(r'^ =>\s+(?!%d )\d+ ' % first)
+        second = int(t.wait_for(r'^ =>\s+(\d+) ').group(1))
+        self.assertGreater(second, first)
+        self.assertEqual(second, source_line('main.cpp', 'Options opt = parse_options'))
+        t.click_text('^NOver', row=-1, double=True)           # double click: two steps
+        t.wait_for(r'^ =>\s+%d ' % source_line('main.cpp', 'signal(SIGTERM, on_signal)'))
+        t.click_text(' Threads ')                              # a tab label in the bottom panel
+        t.wait_for(r'^\* 1 .*stopped.*main\(\) at src/main\.cpp')
+        t.click_text('^RCont', row=-1)
+        t.wait_for(r'\^CBreak')
+        t.click_text('^CBreak', row=-1)
+        t.wait_for(r'Paused: Paused \(Break All\)')
+
     def test_help_and_menu_open(self):
         t = self.start('--no-session', 'build/demo_debug', '--quick')
         t.wait_for(r'Opened|Loaded')
